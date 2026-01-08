@@ -1,70 +1,42 @@
-#include "main.h"
+#include "stm32f1xx_hal.h"
 
-/* Prototipos */
-void SystemClock_Config(void);
-static void MX_GPIO_Init(void);
-
-int main(void)
-{
-    HAL_Init();
-    SystemClock_Config();     // Clock interno HSI
-    MX_GPIO_Init();
-
-    /* Encendemos el LED fijo al arrancar */
-    HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, GPIO_PIN_RESET);
-
-    /* Bucle principal sin HAL_Delay */
-    while (1)
-    {
-        HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_13);
-
-        /* Delay burdo por software */
-        for (volatile uint32_t i = 0; i < 600000; i++);
-    }
-}
-
-static void MX_GPIO_Init(void)
-{
-    __HAL_RCC_GPIOC_CLK_ENABLE();
-
+// Función para inicializar el PIN del LED
+void GPIO_Init(void) {
+    // 1. Estructura de configuración
     GPIO_InitTypeDef GPIO_InitStruct = {0};
 
+    // 2. Activar el reloj del Puerto C (Donde está el LED PC13)
+    // IMPORTANTE: Sin esto, el puerto no funciona y el programa se cuelga
+    __HAL_RCC_GPIOC_CLK_ENABLE();
+
+    // 3. Configurar el Pin PC13
     GPIO_InitStruct.Pin = GPIO_PIN_13;
-    GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+    GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP; // Push-Pull
     GPIO_InitStruct.Pull = GPIO_NOPULL;
     GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
 
+    // 4. Aplicar la configuración
     HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
-
-    /* LED apagado (activo en bajo) */
-    HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, GPIO_PIN_SET);
 }
 
+int main(void) {
+    // 1. Inicializar la librería HAL (Configura SysTick para HAL_Delay, etc.)
+    HAL_Init();
 
-void SystemClock_Config(void)
-{
-    RCC_OscInitTypeDef RCC_OscInitStruct = {0};
-    RCC_ClkInitTypeDef RCC_ClkInitStruct = {0};
+    // 2. Inicializar nuestros periféricos (GPIO)
+    GPIO_Init();
 
-    /* Oscilador interno */
-    RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSI;
-    RCC_OscInitStruct.HSIState = RCC_HSI_ON;
-    RCC_OscInitStruct.HSICalibrationValue = RCC_HSICALIBRATION_DEFAULT;
-    RCC_OscInitStruct.PLL.PLLState = RCC_PLL_NONE;
+    // 3. Bucle infinito (El "loop" de Arduino)
+    while (1) {
+        // Togglear (invertir) el estado del pin PC13
+        HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_13);
 
-    HAL_RCC_OscConfig(&RCC_OscInitStruct);
+        // Esperar 500 milisegundos
+        HAL_Delay(500);
+    }
+}
 
-    /* Clocks del sistema */
-    RCC_ClkInitStruct.ClockType =
-        RCC_CLOCKTYPE_SYSCLK |
-        RCC_CLOCKTYPE_HCLK   |
-        RCC_CLOCKTYPE_PCLK1  |
-        RCC_CLOCKTYPE_PCLK2;
-
-    RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_HSI;
-    RCC_ClkInitStruct.AHBCLKDivider = RCC_SYSCLK_DIV1;
-    RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV1;
-    RCC_ClkInitStruct.APB2CLKDivider = RCC_HCLK_DIV1;
-
-    HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_0);
+// Necesario para que SysTick funcione correctamente en STM32Cube
+void SysTick_Handler(void) {
+    HAL_IncTick();
 }
