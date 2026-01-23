@@ -1,102 +1,94 @@
+/* * ARCHIVO: src/main.c (PLACA ESCLAVA - LED EXTERNO PB0)
+ */
 #include "stm32f1xx_hal.h"
 
-// Función para inicializar el PIN del LED
-void GPIO_Init(void) {
-    // 1. Estructura de configuración
-    GPIO_InitTypeDef LedGreen = {0};
-    GPIO_InitTypeDef LedRed = {0};
-    GPIO_InitTypeDef ButtonD = {0};
-    GPIO_InitTypeDef ButtonU = {0};
-    GPIO_InitTypeDef LedBlue = {0};
-    GPIO_InitTypeDef LedBP = {0};
+SPI_HandleTypeDef hspi1;
 
-    // 2. Activar el reloj de los Puerto A, B y C
-    // IMPORTANTE: Sin esto, el puerto no funciona y el programa se cuelga
-    __HAL_RCC_GPIOA_CLK_ENABLE();
-    __HAL_RCC_GPIOB_CLK_ENABLE();
-    __HAL_RCC_GPIOC_CLK_ENABLE();
+void SystemClock_Config(void);
+static void MX_GPIO_Init(void);
+static void MX_SPI1_Init(void);
 
-    // 3. Configurar los pines
-    // Pin A0 como salida (LED verde)
-    LedGreen.Pin = GPIO_PIN_0;
-    LedGreen.Mode = GPIO_MODE_OUTPUT_PP;
-    LedGreen.Pull = GPIO_NOPULL;
-    LedGreen.Speed = GPIO_SPEED_FREQ_LOW;
+int main(void)
+{
+  HAL_Init();
+  SystemClock_Config();
+  MX_GPIO_Init();
+  MX_SPI1_Init();
 
-    // Pin C15 como salida (LED rojo)
-    LedRed.Pin = GPIO_PIN_15;
-    LedRed.Mode = GPIO_MODE_OUTPUT_PP;
-    LedRed.Pull = GPIO_NOPULL;
-    LedRed.Speed = GPIO_SPEED_FREQ_LOW;
+  uint8_t rx_buffer = 0;
 
-    // Pin B12 como entrada con resistencia de pull-down (Apretado = 1, Suelto = 0)
-    ButtonD.Pin = GPIO_PIN_12;
-    ButtonD.Mode = GPIO_MODE_INPUT;
-    ButtonD.Pull = GPIO_PULLDOWN;
-    ButtonD.Speed = GPIO_SPEED_FREQ_LOW;
-
-    // LED de la placa (es activo en bajo)
-    LedBP.Pin = GPIO_PIN_13;
-    LedBP.Mode = GPIO_MODE_OUTPUT_PP;
-    LedBP.Pull = GPIO_NOPULL;
-    LedBP.Speed = GPIO_SPEED_FREQ_LOW;
-
-    // Pin B9 como entrada con resistencia de pull-up (Apretado = 0, Suelto = 1)
-    ButtonU.Pin = GPIO_PIN_9;
-    ButtonU.Mode = GPIO_MODE_INPUT;
-    ButtonU.Pull = GPIO_PULLUP;
-    ButtonU.Speed = GPIO_SPEED_FREQ_LOW;
-
-    // Pin A9 como salida (LED azul)
-    LedBlue.Pin = GPIO_PIN_9;
-    LedBlue.Mode = GPIO_MODE_OUTPUT_PP;
-    LedBlue.Pull = GPIO_NOPULL;
-    LedBlue.Speed = GPIO_SPEED_FREQ_LOW;
-
-    // 4. Aplicar la configuración
-    HAL_GPIO_Init(GPIOA, &LedGreen);
-    HAL_GPIO_Init(GPIOB, &ButtonD);
-    HAL_GPIO_Init(GPIOC, &LedBP);
-    HAL_GPIO_Init(GPIOC, &LedRed);
-    HAL_GPIO_Init(GPIOB, &ButtonU);
-    HAL_GPIO_Init(GPIOA, &LedBlue);
-}
-
-int main(void) {
-    // 1. Inicializar la librería HAL (Configura SysTick para HAL_Delay, etc.)
-    HAL_Init();
-
-    // 2. Inicializar nuestros periféricos (GPIO)
-    GPIO_Init();
-
-    // 3. Bucle infinito (El "loop" de Arduino)
-    while (1) {
-        // Encender LED verde
-        HAL_GPIO_WritePin(GPIOA, GPIO_PIN_0, GPIO_PIN_SET);
-
-        // Alternar estado del LED rojo
-        HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_15);
-
-        // Leer estado del botón conectado a B12 y controlar el LED de la placa
-        if (HAL_GPIO_ReadPin(GPIOB, GPIO_PIN_12) == GPIO_PIN_SET){
-            HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, GPIO_PIN_RESET);
-        } else {
-            HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, GPIO_PIN_SET);
-        }
-
-        // Leer estado del botón conectado a B9 y controlar el LED azul
-        if (HAL_GPIO_ReadPin(GPIOB, GPIO_PIN_9)){
-            HAL_GPIO_WritePin(GPIOA, GPIO_PIN_9, GPIO_PIN_SET);
-        } else {
-            HAL_GPIO_WritePin(GPIOA, GPIO_PIN_9, GPIO_PIN_RESET);  
-        }
-
-        // Esperar 500 milisegundos
-        HAL_Delay(50);
+  while (1)
+  {
+    /* Esperar dato del Maestro */
+    if (HAL_SPI_Receive(&hspi1, &rx_buffer, 1, HAL_MAX_DELAY) == HAL_OK)
+    {
+      if (rx_buffer == 0x01) {
+        /* ENCIENDE EL LED EXTERNO (Lógica Positiva) */
+        /* PB0 se pone en 3.3V (SET) */
+        HAL_GPIO_WritePin(GPIOB, GPIO_PIN_1, GPIO_PIN_SET);
+      } 
+      else {
+        /* APAGA EL LED EXTERNO */
+        /* PB0 se pone en GND (RESET) */
+        HAL_GPIO_WritePin(GPIOB, GPIO_PIN_1, GPIO_PIN_RESET);
+      }
     }
+  }
 }
 
-// Necesario para que SysTick funcione correctamente en STM32Cube
-void SysTick_Handler(void) {
-    HAL_IncTick();
+static void MX_GPIO_Init(void)
+{
+  GPIO_InitTypeDef GPIO_InitStruct = {0};
+
+  /* 1. Habilitar Relojes */
+  __HAL_RCC_GPIOA_CLK_ENABLE(); // Para SPI (PA4, PA5, PA7)
+  __HAL_RCC_GPIOB_CLK_ENABLE(); // <--- ¡NUEVO! Para el LED en PB0
+  __HAL_RCC_SPI1_CLK_ENABLE();  // Para el periférico SPI
+
+  /* 2. Configurar LED EXTERNO (PB0) */
+  HAL_GPIO_WritePin(GPIOB, GPIO_PIN_0, GPIO_PIN_RESET); // Iniciar Apagado
+  
+  GPIO_InitStruct.Pin = GPIO_PIN_1;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP; // Push-Pull
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(GPIOB, &GPIO_InitStruct); // <--- OJO: GPIOB
+
+  /* 3. Configurar Pines SPI (Entradas: SCK, MOSI, NSS) */
+  GPIO_InitStruct.Pin = GPIO_PIN_5 | GPIO_PIN_7 | GPIO_PIN_4;
+  GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+
+  /* 4. Configurar Pin MISO (Salida AF) */
+  GPIO_InitStruct.Pin = GPIO_PIN_6;
+  GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_HIGH;
+  HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+}
+
+static void MX_SPI1_Init(void)
+{
+  hspi1.Instance = SPI1;
+  hspi1.Init.Mode = SPI_MODE_SLAVE;
+  hspi1.Init.Direction = SPI_DIRECTION_2LINES;
+  hspi1.Init.DataSize = SPI_DATASIZE_8BIT;
+  hspi1.Init.CLKPolarity = SPI_POLARITY_LOW;
+  hspi1.Init.CLKPhase = SPI_PHASE_1EDGE;
+  hspi1.Init.NSS = SPI_NSS_HARD_INPUT; // Hardware NSS (PA4)
+  hspi1.Init.FirstBit = SPI_FIRSTBIT_MSB;
+  hspi1.Init.TIMode = SPI_TIMODE_DISABLE;
+  hspi1.Init.CRCCalculation = SPI_CRCCALCULATION_DISABLE;
+
+  if (HAL_SPI_Init(&hspi1) != HAL_OK)
+  {
+    while(1);
+  }
+}
+
+void SystemClock_Config(void) {}
+
+void SysTick_Handler(void)
+{
+  HAL_IncTick();
 }
